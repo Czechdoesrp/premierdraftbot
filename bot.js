@@ -70,7 +70,7 @@ function findPlayer(d, text) {
 }
 
 function onTheClock(d) {
-  if (isDone(d)) return '🏁 **The draft is complete!** Use `/board` to see the results.';
+  if (isDone(d)) return '🏁 **The draft is complete!** Final teams are listed below.';
   const c = current(d);
   const clock = d.deadline ? ` — auto-pick <t:${Math.ceil(d.deadline / 1000)}:R>` : '';
   return `⏱️ On the clock — pick ${label(c.round, c.pickInRound)}: slot ${c.slot} ${mention(d.slots[c.slot])}${clock}`;
@@ -92,7 +92,26 @@ function menus(d) {
   }
   return rows;
 }
-const clock = (d, text) => ({ content: text, components: menus(d) });
+// One column per drafter listing everyone they took, in the order they took them.
+function rosterEmbed(d, final) {
+  const fields = [];
+  for (let n = 1; n <= SLOTS; n++) {
+    const mine = d.picks.filter((p) => p.slot === n && p.player).map((p, k) => `${k + 1}. ${p.player}`);
+    fields.push({
+      name: `Drafter ${n}`,
+      value: `${mention(d.slots[n])}\n${mine.join('\n') || '*no picks yet*'}`.slice(0, 700),
+      inline: true,
+    });
+  }
+  return { title: final ? '🏆 Final teams' : 'Teams so far', color: 0x2b6cb0, fields };
+}
+
+// The message that ends the draft carries every drafter's full team.
+const clock = (d, text) => ({
+  content: text,
+  components: menus(d),
+  embeds: d.started && isDone(d) ? [rosterEmbed(d, true)] : [],
+});
 
 // Post an on-the-clock message (as a command reply, or straight to the draft channel)
 // and strip the dropdowns off the previous one.
@@ -159,6 +178,7 @@ const commands = [
   new SlashCommandBuilder().setName('pick').setDescription('Draft a player (only works on your turn)')
     .addStringOption((o) => o.setName('player').setDescription('Player').setRequired(true).setAutocomplete(true)),
   new SlashCommandBuilder().setName('available').setDescription('Show players still available'),
+  new SlashCommandBuilder().setName('teams').setDescription('Show each drafter\'s team so far'),
   new SlashCommandBuilder().setName('board').setDescription('Show the draft order and every pick so far'),
 ].map((c) => c.setDMPermission(false).toJSON());
 
@@ -227,13 +247,18 @@ client.on(Events.InteractionCreate, async (i) => {
       return i.reply(chunk(`**Available (${d.available.length})**\n${d.available.join('\n')}`));
     }
 
+    if (i.commandName === 'teams') {
+      if (!d.started) return i.reply({ content: 'The draft has not started yet.', ephemeral: true });
+      return i.reply({ embeds: [rosterEmbed(d, isDone(d))], allowedMentions: { parse: [] } });
+    }
+
     if (i.commandName === 'board') {
       if (!d.started) d.slots = rolesByName(i.guild);
       const order = Array.from({ length: SLOTS }, (_, k) => `${k + 1}. ${mention(d.slots[k + 1])}`).join('\n');
       const picks = d.picks.map((p) => `${label(p.round, p.pickInRound)} · slot ${p.slot} — ${p.player ?? '*skipped*'}`).join('\n');
       const status = d.started ? onTheClock(d) : 'Draft has not started.';
       return i.reply({
-        content: chunk(`**Draft order**\n${order}\n\n**Picks**\n${picks || 'None yet.'}\n\n${status}`),
+        embeds: [{ title: 'Draft board', color: 0x2b6cb0, description: (`**Draft order**\n${order}\n\n**Picks**\n${picks || 'None yet.'}\n\n${status}`).slice(0, 4000) }],
         allowedMentions: { parse: [] },
       });
     }
