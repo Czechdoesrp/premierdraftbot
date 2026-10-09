@@ -169,7 +169,7 @@ const commands = [
       .addStringOption((o) => o.setName('list').setDescription('Or paste players separated by commas')))
     .addSubcommand((s) => s.setName('start').setDescription('Start the draft')
       .addBooleanOption((o) => o.setName('snake').setDescription('Reverse the order every other round (default: no)'))
-      .addIntegerOption((o) => o.setName('rounds').setDescription('Number of rounds (default: as many full rounds as fit)').setMinValue(1)))
+      .addIntegerOption((o) => o.setName('rounds').setDescription('Number of rounds (default: until every player is taken)').setMinValue(1)))
     .addSubcommand((s) => s.setName('undo').setDescription('Undo the last pick'))
     .addSubcommand((s) => s.setName('skip').setDescription('Skip whoever is on the clock'))
     .addSubcommand((s) => s.setName('forcepick').setDescription('Make the pick for whoever is on the clock')
@@ -311,7 +311,7 @@ client.on(Events.InteractionCreate, async (i) => {
       const missing = Array.from({ length: SLOTS }, (_, k) => k + 1).filter((n) => !slots[n]);
       if (missing.length) return i.reply({ content: `Create these roles first: ${missing.map((n) => `Drafter ${n}`).join(', ')}`, ephemeral: true });
       d.slots = slots;
-      const max = Math.floor(d.players.length / SLOTS);
+      const max = Math.ceil(d.players.length / SLOTS); // last round may be partial so every player gets drafted
       if (max < 1) return i.reply({ content: `You need at least ${SLOTS} players.`, ephemeral: true });
       d.rounds = Math.min(i.options.getInteger('rounds') ?? max, max);
       d.snake = i.options.getBoolean('snake') ?? false;
